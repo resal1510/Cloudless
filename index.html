@@ -68,6 +68,8 @@ li .del{font:400 12px var(--mono);color:var(--muted);padding:8px}
 .player{border-radius:12px;overflow:hidden;border:1px solid var(--line)}
 .player iframe{display:block;width:100%;height:166px;border:0}
 .hint{font-size:13px;color:var(--muted)}
+.msg{font-size:13px;color:var(--muted);margin:10px 0 0}
+.msg.bad{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -100,6 +102,7 @@ li .del{font:400 12px var(--mono);color:var(--muted);padding:8px}
       <input id="url" type="url" inputmode="url" placeholder="https://soundcloud.com/user/sets/…" autocomplete="off" required>
       <button class="add" type="submit">Add</button>
     </form>
+    <p class="msg" id="msg" hidden></p>
     <ul id="lists"></ul>
   </section>
 
@@ -218,14 +221,44 @@ if('mediaSession' in navigator){
   }catch{}
 }
 
-$('addForm').onsubmit = e => {
+const isShort = u => /^https:\/\/on\.soundcloud\.com\//.test(u);
+function say(t, bad){ const m = $('msg'); m.textContent = t || ''; m.hidden = !t; m.className = bad ? 'msg bad' : 'msg' }
+
+// Short share links (on.soundcloud.com) are not accepted by the embed player.
+// Try SoundCloud's oEmbed endpoint to turn them into a playable URL.
+async function resolve(raw){
+  let url = raw.trim();
+  const iframeSrc = url.match(/w\.soundcloud\.com\/player\/\?url=([^&"]+)/);
+  if(iframeSrc) return { url: decodeURIComponent(iframeSrc[1]) };
+  url = url.split('?')[0].replace('://m.soundcloud.com', '://soundcloud.com');
+  if(!isShort(url)) return { url, name: decodeURIComponent(url.split('/').filter(Boolean).pop()).replace(/-/g,' ') };
+  try{
+    const r = await fetch('https://soundcloud.com/oembed?format=json&url=' + encodeURIComponent(url));
+    const j = await r.json();
+    const m = j.html && j.html.match(/url=([^&"]+)/);
+    if(m) return { url: decodeURIComponent(m[1]), name: j.title };
+  }catch{}
+  return null;
+}
+
+$('addForm').onsubmit = async e => {
   e.preventDefault();
-  const url = $('url').value.trim().split('?')[0];
-  if(!/^https:\/\/(on\.|m\.)?soundcloud\.com\//.test(url)){ status('not a soundcloud link'); return }
-  const name = decodeURIComponent(url.split('/').filter(Boolean).pop()).replace(/-/g,' ');
-  if(!lists.some(p => p.url === url)){ lists.push({ url, name }); store.set(KEY, lists) }
-  $('url').value = ''; loadList(url, true);
+  const raw = $('url').value;
+  if(!/soundcloud\.com\//.test(raw)){ say('That is not a SoundCloud link.', true); return }
+  say('Resolving link…');
+  const p = await resolve(raw);
+  if(!p){
+    say('This short link (on.soundcloud.com) could not be opened. Paste it in the Safari address bar, let it load the SoundCloud page, then copy the long address (soundcloud.com/…/sets/…) and add that instead.', true);
+    return;
+  }
+  say('');
+  if(!lists.some(x => x.url === p.url)){ lists.push(p); store.set(KEY, lists) }
+  $('url').value = ''; loadList(p.url, true);
 };
+
+// Drop short links saved by the first version; they never play.
+lists = lists.filter(p => !isShort(p.url)); store.set(KEY, lists);
+if(current && isShort(current)){ current = null; store.set(LAST, null) }
 
 renderLists();
 </script>
