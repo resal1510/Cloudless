@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cloudless">
+<title>Cloudless</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column, now-playing deck on top, saved playlists below, SoundCloud player docked at the bottom */
+:root{
+  --bg:#f3f2ef; --panel:#ffffff; --fg:#17171a; --muted:#6c6a72; --line:#dddbd6;
+  --accent:#e2541b; --accent-fg:#ffffff;
+  --display:"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121214; --panel:#1c1c20; --fg:#f1f0ec; --muted:#9a98a2; --line:#2c2c32;
+  --accent:#ff6a2c; --accent-fg:#121214; color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{
+  font:15px/1.45 var(--display);
+  padding-top:max(20px, env(safe-area-inset-top));
+  padding-bottom:max(20px, env(safe-area-inset-bottom));
+  padding-left:max(16px, env(safe-area-inset-left));
+  padding-right:max(16px, env(safe-area-inset-right));
+}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-weight:800;font-size:30px;letter-spacing:-.02em;margin:0}
+.tag{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.deck{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.now{display:flex;gap:14px;align-items:center;min-width:0}
+.art{width:72px;height:72px;border-radius:10px;background:var(--line) center/cover;flex:none}
+.meta{min-width:0}
+.title{font-weight:800;font-size:18px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.artist{font:400 13px var(--mono);color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s linear}
+.times{display:flex;justify-content:space-between;font:400 12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;margin-top:6px}
+.ctrls{display:flex;justify-content:center;align-items:center;gap:18px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line)}
+.play{width:68px;height:68px;background:var(--accent);color:var(--accent-fg);border:0}
+.icon svg{width:22px;height:22px;fill:currentColor}
+.play svg{width:28px;height:28px}
+.small{font:500 12px var(--mono);color:var(--muted);text-align:center}
+h2{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+form{display:flex;gap:8px}
+input{flex:1;min-width:0;font:400 14px var(--mono);padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.add{padding:0 16px;border-radius:10px;background:var(--fg);color:var(--bg);font-weight:800}
+ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column}
+li{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);min-width:0}
+li .pick{flex:1;min-width:0;text-align:left;padding:13px 0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+li.active .pick{color:var(--accent);font-weight:800}
+li .del{font:400 12px var(--mono);color:var(--muted);padding:8px}
+.tracks li .pick{font-weight:400;font-size:14px}
+.tracks .n{font:400 12px var(--mono);color:var(--muted);width:24px;flex:none;font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);font-size:14px;padding:12px 0}
+.player{border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.player iframe{display:block;width:100%;height:166px;border:0}
+.hint{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Cloudless</h1><span class="tag" id="status">idle</span></header>
+
+  <section class="deck" aria-label="Now playing">
+    <div class="now">
+      <div class="art" id="art"></div>
+      <div class="meta">
+        <div class="title" id="title">Pick a playlist</div>
+        <div class="artist" id="artist">Paste a SoundCloud link below</div>
+      </div>
+    </div>
+    <div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+    </div>
+    <div class="ctrls">
+      <button class="icon" id="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="icon play" id="toggle" aria-label="Play"><svg viewBox="0 0 24 24" id="ticon"><path d="M7 4v16l13-8z"/></svg></button>
+      <button class="icon" id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    </div>
+    <button class="small" id="shuffle">shuffle: off</button>
+  </section>
+
+  <section>
+    <h2>Playlists</h2>
+    <form id="addForm">
+      <input id="url" type="url" inputmode="url" placeholder="https://soundcloud.com/user/sets/…" autocomplete="off" required>
+      <button class="add" type="submit">Add</button>
+    </form>
+    <ul id="lists"></ul>
+  </section>
+
+  <section>
+    <h2>Tracks</h2>
+    <ul class="tracks" id="tracks"><li class="empty">No playlist loaded.</li></ul>
+  </section>
+
+  <section>
+    <h2>SoundCloud player</h2>
+    <div class="player"><iframe id="sc" allow="autoplay; encrypted-media" title="SoundCloud player"
+      src="https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fdiscover&visual=false"></iframe></div>
+    <p class="hint">If the big button does nothing the first time, tap play once inside this player. iOS only lets audio start from a tap inside the frame that plays it.</p>
+  </section>
+</div>
+
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const KEY = 'cloudless.playlists', LAST = 'cloudless.last';
+const store = {
+  get(k, d){ try{ return JSON.parse(localStorage.getItem(k)) ?? d }catch{ return d } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch{} }
+};
+let lists = store.get(KEY, []);
+let current = store.get(LAST, null);
+let shuffle = false, playing = false, sounds = [], idx = 0;
+
+const w = SC.Widget($('sc'));
+const fmt = ms => { const s = Math.floor((ms||0)/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0') };
+const status = t => $('status').textContent = t;
+
+function renderLists(){
+  const ul = $('lists'); ul.innerHTML = '';
+  if(!lists.length){ ul.innerHTML = '<li class="empty">Add your first playlist link above.</li>'; return }
+  lists.forEach((p, i) => {
+    const li = document.createElement('li'); if(p.url === current) li.className = 'active';
+    const b = document.createElement('button'); b.className = 'pick'; b.textContent = p.name || p.url;
+    b.onclick = () => loadList(p.url, true);
+    const d = document.createElement('button'); d.className = 'del'; d.textContent = 'remove';
+    d.onclick = () => { lists.splice(i,1); store.set(KEY, lists); renderLists() };
+    li.append(b, d); ul.append(li);
+  });
+}
+
+function renderTracks(){
+  const ul = $('tracks'); ul.innerHTML = '';
+  if(!sounds.length){ ul.innerHTML = '<li class="empty">No playlist loaded.</li>'; return }
+  sounds.forEach((s, i) => {
+    const li = document.createElement('li'); if(i === idx) li.className = 'active';
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = i+1;
+    const b = document.createElement('button'); b.className = 'pick';
+    b.textContent = s.title ? s.title : 'Track ' + (i+1);
+    b.onclick = () => { w.skip(i) };
+    li.append(n, b); ul.append(li);
+  });
+}
+
+function loadList(url, autoplay){
+  current = url; store.set(LAST, url); renderLists(); status('loading');
+  w.load(url, { auto_play: !!autoplay, visual:false, show_comments:false, show_reposts:false, hide_related:true,
+    callback: () => {
+      w.getSounds(s => { sounds = s || []; renderTracks() });
+      w.getCurrentSound(updateNow);
+      status('ready');
+    }});
+}
+
+function updateNow(s){
+  if(!s) return;
+  $('title').textContent = s.title || 'Unknown track';
+  $('artist').textContent = s.user ? s.user.username : '';
+  const art = (s.artwork_url || (s.user && s.user.avatar_url) || '').replace('-large', '-t300x300');
+  $('art').style.backgroundImage = art ? `url("${art}")` : '';
+  $('dur').textContent = fmt(s.duration);
+  w.getCurrentSoundIndex(i => { idx = i; renderTracks() });
+  if('mediaSession' in navigator && window.MediaMetadata){
+    navigator.mediaSession.metadata = new MediaMetadata({ title: s.title||'', artist: s.user ? s.user.username : '', artwork: art ? [{src:art, sizes:'300x300'}] : [] });
+  }
+}
+
+function setPlaying(p){
+  playing = p; status(p ? 'playing' : 'paused');
+  $('ticon').innerHTML = p ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+  $('toggle').setAttribute('aria-label', p ? 'Pause' : 'Play');
+}
+
+w.bind(SC.Widget.Events.READY, () => {
+  w.bind(SC.Widget.Events.PLAY, () => { setPlaying(true); w.getCurrentSound(updateNow) });
+  w.bind(SC.Widget.Events.PAUSE, () => setPlaying(false));
+  w.bind(SC.Widget.Events.PLAY_PROGRESS, e => {
+    $('pos').textContent = fmt(e.currentPosition);
+    $('prog').style.width = (e.relativePosition*100).toFixed(2)+'%';
+  });
+  w.bind(SC.Widget.Events.FINISH, () => {
+    if(shuffle && sounds.length > 1){
+      let n; do { n = Math.floor(Math.random()*sounds.length) } while(n === idx);
+      w.skip(n);
+    } else if(idx >= sounds.length - 1){ w.skip(0) }
+    else { w.next() }
+  });
+  if(current) loadList(current, false); else status('idle');
+});
+
+$('toggle').onclick = () => w.toggle();
+$('next').onclick = () => shuffle ? w.skip(Math.floor(Math.random()*sounds.length)) : w.next();
+$('prev').onclick = () => w.prev();
+$('shuffle').onclick = () => { shuffle = !shuffle; $('shuffle').textContent = 'shuffle: ' + (shuffle ? 'on' : 'off') };
+
+if('mediaSession' in navigator){
+  try{
+    navigator.mediaSession.setActionHandler('play', () => w.play());
+    navigator.mediaSession.setActionHandler('pause', () => w.pause());
+    navigator.mediaSession.setActionHandler('nexttrack', () => w.next());
+    navigator.mediaSession.setActionHandler('previoustrack', () => w.prev());
+  }catch{}
+}
+
+$('addForm').onsubmit = e => {
+  e.preventDefault();
+  const url = $('url').value.trim().split('?')[0];
+  if(!/^https:\/\/(on\.|m\.)?soundcloud\.com\//.test(url)){ status('not a soundcloud link'); return }
+  const name = decodeURIComponent(url.split('/').filter(Boolean).pop()).replace(/-/g,' ');
+  if(!lists.some(p => p.url === url)){ lists.push({ url, name }); store.set(KEY, lists) }
+  $('url').value = ''; loadList(url, true);
+};
+
+renderLists();
+</script>
+</body>
+</html>
